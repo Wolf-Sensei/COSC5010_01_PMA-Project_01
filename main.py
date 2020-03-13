@@ -48,12 +48,6 @@ def main():
     ### File/Directory Paths
     #####################################
 
-    #############
-    # For testing
-    #############
-    args.paths.append('C:\Riot Games\Riot Client\RiotClientServices.exe')
-    args.paths.append('C:\Temp')
-
     # Getting files from file and dir paths from args
     (files, invalid) = compileFileList(args.paths, args.e)
 
