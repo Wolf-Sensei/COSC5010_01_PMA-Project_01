@@ -27,7 +27,7 @@ The output would be several files put inside of a created directory called Malwa
 xxx_filenamexxx.txt | in dir or sub directories  
 where the "filename" is the name of the file processed. files 001-xxx will only be created if the flags [-s] [i] or [-f] were used, the contents of which will list the names of sections, imports, or functions based on the flags used for that file.
 ### Requirements
-PEfile at 
-https://github.com/erocarrera/pefile or 
-https://pypi.org/project/pefile/ 
+PEfile at  
+https://github.com/erocarrera/pefile or  
+https://pypi.org/project/pefile/  
 Used "python -m pip install pefile"
