@@ -27,9 +27,6 @@ import string
 
 # Driver
 def main():
-    # Init
-    PEResults = dict()
-
     #####################################
     ### Arguments
     #####################################
@@ -49,7 +46,9 @@ def main():
     #####################################
 
     # Getting files from file and dir paths from args
+    print('Compiling file list...')
     (files, invalid) = compileFileList(args.paths, args.e)
+    print('Finished')
 
     # Printing out invalid paths if any
     for inv in invalid:
@@ -65,35 +64,10 @@ def main():
         print('[-f] Save function names | Optional')
         print("[-e] Explore sub-directories of parent dir | Optional")
         print('[paths] A list of file and dir paths')
-        sys.exit()      
-
-    #####################################
-    ### Processing Files
-    #####################################
-
-    # Opening each file and processing it in PE
-    for f in files:
-        # Attempting to open file in PE
-        print('Processing: ', f)
-        pe = openFileInPE(f)
-        if pe is None: continue
-        pe.parse_data_directories()
-
-        # Attempting to get compile time
-        compileTime = getCompileTime(pe)
-
-        # Attempting to get sections, imports, and functions
-        sections = getSections(pe)
-        imports = getImports(pe)
-        functions = getFunctions(imports)
-
-        # Calculating packed/obfuscation likelyhood
-        # @POLikelyhood: 0 Very Likely; 1 Likely; 2 Unknown; 3 Unlikely; 4 Very Unlikely
-        POLikelyhood = calculatePOLikelyhood(sections, functions)
-        PEResults[f] = (POLikelyhood, compileTime, sections, imports, functions)
-        print('Finished processing: ', f)
+        sys.exit()    
 
     # Creating directory for results
+    # Clearing it if it already exists
     try:
         os.mkdir('MalwareAnalysisResults')
     except:
@@ -101,31 +75,38 @@ def main():
             shutil.rmtree('MalwareAnalysisResults')
             os.mkdir('MalwareAnalysisResults')
         except:
-            pass
+            pass  
 
-    # Outputing results to file(s)
-    index = 0
-    with open('MalwareAnalysisResults\\000_MalwareAnalysisResults.txt', 'w') as output:
-        for fileName, (POLikelyhood, compileTime, sections, imports, functions) in PEResults.items():
-            index += 1
-            # Basic Information
-            output.writelines([fileName, '\n\t'])
-            output.writelines(['Packed/Obfuscated: ', convertPOLikelyhood(POLikelyhood)])
-            output.writelines([' || Compile Time: ', str(compileTime), ' [UTC]'])
-            output.writelines([' || Sections: ', str(len(sections))])
-            output.writelines([' || Imports: ', str(len(imports))])
-            output.writelines([' || Functions: ', str(len(functions)), '\n'])
-            # Detailed information if desired
-            if args.s or args.i or args.f:
-                outFile = str(index).zfill(3) + '_' + os.path.basename(fileName) + '.txt'
-                output.writelines(['\tExtra Information in file: ', outFile, '\n'])
-                with open('MalwareAnalysisResults\\' + outFile, 'w') as output2:
-                    if args.s:
-                        output2.writelines(['='*10 + 'Sections' + '='*10 + '\n'] + [''.join(filter(lambda x: x in set(string.printable), s.decode('utf-8') + ' || ')) for s in sections] + ['\n\n'])
-                    if args.i:
-                        output2.writelines(['='*10 + 'Imports' + '='*10 + '\n'] + [''.join(filter(lambda x: x in set(string.printable), i.dll.decode('utf-8') + ' || ')) for i in imports] + ['\n\n'])
-                    if args.f:
-                        output2.writelines(['='*10 + 'Functions' + '='*10 + '\n'] + [f + ' || ' for f in functions] + ['\n\n'])
+    #####################################
+    ### Processing Files
+    #####################################
+
+    # Opening each file and processing it in PE
+    processed = 0
+    for f in files:
+        # Attempting to open file in PE
+        print('Processing: ', f)
+        pe = openFileInPE(f)
+        if pe is None: continue
+        print('Parsing Data Directories', end='\r')
+        pe.parse_data_directories()
+
+        # Attempting to get compile time
+        compileTime = getCompileTime(pe)
+
+        # Attempting to get sections, imports, and functions
+        sections = getSections(pe)
+        (imports, il) = getImports(pe)
+        functions = getFunctions(imports)
+
+        # Calculating packed/obfuscation likelyhood
+        # @POLikelyhood: 0 Very Likely; 1 Likely; 2 Unknown; 3 Unlikely; 4 Very Unlikely
+        POLikelyhood = calculatePOLikelyhood(sections, functions)
+
+        # Saving results
+        processed += 1
+        saveResults(f, POLikelyhood, compileTime, sections, il, functions, processed, args)
+        print('Finished processing: ', f)
 
 # Compiles a list of of files from the given paths
 # If the arg is a file then opens and does analysis
@@ -140,8 +121,10 @@ def compileFileList(paths, explore):
     # Compiling list of files to process
     for path in paths:
         if os.path.isfile(path):    # File
+            print('Found File: ', path, end='\r')
             files.append(path)
         elif os.path.isdir(path):   # Dir : Getting files in dir
+            print('Found Dir: ', path, end='\r')
             dirPaths = [os.path.join(path, p) for p in os.listdir(path)]
             dirFiles = [f for f in dirPaths if os.path.isfile(f)]
             files += dirFiles
@@ -183,27 +166,36 @@ def getCompileTime(pe):
 # Returns a list of sections names
 def getSections(pe):
     # Init
-    sections = list()
+    sl = list()
 
     # Getting sections
     print('Getting Sections', end='\r')
-    for section in pe.sections:
-        sections.append(section.Name)
+    for s in pe.sections:
+        try:
+            sl.append(''.join(filter(lambda x: x in set(string.printable), s.decode('utf-8'))))
+        except:
+            sl.append('Error: Failed to display Section')
 
-    return sections
+    return sl
 
 # Returns a list of imports
 def getImports(pe):
     # Init
     imports = None
+    il = list()
 
     print('Getting Imports', end='\r')
     try:
         imports = pe.DIRECTORY_ENTRY_IMPORT
+        for i in imports:
+            try:
+                il.append(''.join(filter(lambda x: x in set(string.printable), i.dll.decode('utf-8') + ' || ')))
+            except:
+                il.append('Error: Failed to display Import')
     except:
         print('Unable to determine imports')
 
-    return imports
+    return (imports, il)
 
 # Returns a list of functions from an import list
 def getFunctions(imports):
@@ -219,7 +211,7 @@ def getFunctions(imports):
             try:
                 functions.append(func.name.decode('utf-8'))
             except:
-                continue
+                functions.append("Error: Failed to display function")
 
     return functions
 
@@ -232,9 +224,10 @@ def calculatePOLikelyhood(sections, functions):
     print('Calculating Packed/ObfuscationLikelyhood', end='\r')
 
     # Comparing Common Section Names with sections list
-    if '.text' or '.rdata' or '.data' or '.rsrc' in sections: sectionsPacked = False
+    if '.text' in sections or '.rdata' in sections or '.data' in sections or '.rsrc' in sections: sectionsPacked = False
 
     # Comparing number of imports (Using personal xp, which isn't a lot)
+    if functions is None: return 3
     funcNum = len(functions)
     if funcNum <= 10: result = 0     # Very likely
     elif funcNum <= 20: result = 1   # Likely
@@ -260,6 +253,37 @@ def convertPOLikelyhood(POLikelyhood):
     elif POLikelyhood == 3: return "Unlikely"
     elif POLikelyhood == 4: return "Very Unlikely"
     else: return "Error"
+
+# Save results to file(s)
+def saveResults(fileName, POLikelyhood, compileTime, sections, imports, functions, index, args):
+    # Checking inputs
+    if fileName is None: fileName = 'Unknown'
+    if POLikelyhood is None: POLikelyhood = 'Unknown'
+    if compileTime is None: compileTime = 'Unknown'
+    if sections is None: sections = 'Unknown'
+    if imports is None: imports = 'Unknown'
+    if functions is None: functions = 'Unknown'
+    # Outputing results to file(s)
+    with open('MalwareAnalysisResults\\000_MalwareAnalysisResults.txt', 'a') as output:
+        # Basic Information
+        output.writelines([fileName, '\n\t'])
+        output.writelines(['Packed/Obfuscated: ', convertPOLikelyhood(POLikelyhood)])
+        output.writelines([' || Compile Time: ', str(compileTime), ' [UTC]'])
+        output.writelines([' || Sections: ', str(len(sections))])
+        output.writelines([' || Imports: ', str(len(imports))])
+        output.writelines([' || Functions: ', str(len(functions)), '\n'])
+        # Detailed information if desired
+        if args.s or args.i or args.f:
+            outFile = str(index).zfill(3) + '_' + os.path.basename(fileName) + '.txt'
+            output.writelines(['\tExtra Information in file: ', outFile, '\n'])
+            with open('MalwareAnalysisResults\\' + outFile, 'w') as output2:
+                if args.s:
+                    output2.writelines(['='*10 + 'Sections' + '='*10 + '\n'] + [s + ' || ' for s in sections] + ['\n\n'])
+                if args.i:
+                    output2.writelines(['='*10 + 'Imports' + '='*10 + '\n'] + [i + ' || ' for i in imports] + ['\n\n'])
+                if args.f:
+                    output2.writelines(['='*10 + 'Functions' + '='*10 + '\n'] + [f + ' || ' for f in functions] + ['\n\n'])
+
 
 # Running main when script starts
 if __name__ == '__main__': main()
